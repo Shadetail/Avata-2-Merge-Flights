@@ -18,4 +18,8 @@ Python script that processes segmented DJI Avata 2 drone videos to determine whi
 
 ## Usage
 
-Select all your video files and drag and drop them onto the script.
+Select all your video files straight from the SD card and drag and drop them onto the script.
+
+![Example output.](https://i.imgur.com/8COUGs3.png "example output of Avata 2 Merge Flights script")
+
+
