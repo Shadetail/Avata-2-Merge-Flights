@@ -31,4 +31,5 @@ As of August 4 2024, Avata 2 still has the date time bug, where it will tag file
 ![Example error.](https://i.imgur.com/sbCbQkn.png "example faulty flight autodetect due to Avata date time bug")
 
 In this example files with index _21 and _22 should on their own make up the 5th flight.
+
 The only way to workaround this DJI bug on your own seems to be to connect headset to your phone's DJI Fly app before every single flight.
