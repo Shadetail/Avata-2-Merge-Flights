@@ -10,6 +10,7 @@ Python script that processes segmented DJI Avata 2 drone videos to determine whi
 - **Customizable Output**: Prompts the user for an output directory name and constructs directories based on the earliest date found in file names.
 - **Size Validation and Cleanup**: Checks merged file sizes against the sum of the input files. Deletes source files if the size difference is within a 0.1% threshold. This is to avoid deleting input files if due to full hard disc mp4-merge silently fails and outputs a half finished output video.
 - **Error Handling**: Provides detailed error messages and skips deletion if file sizes do not match closely enough.
+- **SRT Merging**: If .SRT files are detected next to videos, they will be merged and copied over as well (timestamps and frame counts within will be adjusted appropritely).
 
 ## Set Up
 
