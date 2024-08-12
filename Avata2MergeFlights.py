@@ -1,6 +1,7 @@
 import os
 import sys
 import subprocess
+import re
 from datetime import datetime, timedelta
 from tkinter import simpledialog, Tk, filedialog
 from moviepy.editor import VideoFileClip
@@ -55,30 +56,130 @@ def group_files(files):
 
     return flights
 
+def parse_srt_time(time_str):
+    """Parse SRT timestamp string to timedelta object."""
+    h, m, s = time_str.replace(',', '.').split(':')
+    return timedelta(hours=int(h), minutes=int(m), seconds=float(s))
+
+def format_srt_time(td):
+    """Format timedelta object to SRT timestamp string."""
+    total_seconds = int(td.total_seconds())
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    milliseconds = int(td.microseconds / 1000)
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d},{milliseconds:03d}"
+
+def adjust_srt_timestamps(srt_content, time_offset, frame_offset):
+    adjusted_lines = []
+    current_subtitle = []
+    subtitle_count = 0
+    frame_pattern = re.compile(r'FrameCnt: (\d+)')
+
+    for line in srt_content.splitlines():
+        if line.strip().isdigit():
+            if current_subtitle:
+                adjusted_lines.extend(current_subtitle)
+                adjusted_lines.append('')
+            subtitle_count += 1
+            current_subtitle = [str(subtitle_count + frame_offset)]
+        elif '-->' in line:
+            start, end = map(str.strip, line.split('-->'))
+            adjusted_start = format_srt_time(parse_srt_time(start) + time_offset)
+            adjusted_end = format_srt_time(parse_srt_time(end) + time_offset)
+            current_subtitle.append(f"{adjusted_start} --> {adjusted_end}")
+        else:
+            frame_match = frame_pattern.search(line)
+            if frame_match:
+                current_frame = int(frame_match.group(1))
+                adjusted_frame = current_frame + frame_offset
+                line = frame_pattern.sub(f'FrameCnt: {adjusted_frame}', line)
+            current_subtitle.append(line)
+
+    if current_subtitle:
+        adjusted_lines.extend(current_subtitle)
+
+    return '\n'.join(adjusted_lines)
+
+def merge_srt_files(flight, output_srt_file):
+    merged_content = []
+    current_offset = timedelta()
+    frame_offset = 0
+
+    for filename in flight:
+        srt_filename = filename.replace('.MP4', '.SRT')
+        if os.path.exists(srt_filename):
+            with open(srt_filename, 'r', encoding='utf-8') as infile:
+                srt_content = infile.read()
+                adjusted_content = adjust_srt_timestamps(srt_content, current_offset, frame_offset)
+                merged_content.append(adjusted_content)
+
+            # Find the last timestamp and frame count in the file
+            lines = srt_content.strip().split('\n')
+            last_timestamp = None
+            last_frame = 0
+            frame_pattern = re.compile(r'FrameCnt: (\d+)')
+            for line in reversed(lines):
+                if '-->' in line and not last_timestamp:
+                    last_timestamp = line.split('-->')[1].strip()
+                    break
+
+            for line in reversed(lines):
+                frame_match = frame_pattern.search(line)
+                if frame_match:
+                    last_frame = int(frame_match.group(1))
+                    break
+
+            if last_timestamp:
+                try:
+                    end_time = parse_srt_time(last_timestamp)
+                    current_offset += end_time
+                except ValueError as e:
+                    print(f"Warning: Could not parse timestamp in file {srt_filename}: {e}")
+                    print(f"Problematic line: {last_timestamp}")
+            else:
+                print(f"Warning: No timestamp found in file {srt_filename}")
+
+            frame_offset += last_frame
+
+    with open(output_srt_file, 'w', encoding='utf-8') as outfile:
+        outfile.write('\n\n'.join(merged_content))
+
+    return True  # Indicate successful merging
+
 def merge_videos(flights, output_folder, base_output_name):
     """
     Merge videos of each flight using an external merging utility.
-    Deletes source files if the merged file size matches the input files size within a 0.1% margin.
-    Adds detailed logging for successful merges, file deletions, and errors.
+    Also handles corresponding SRT files if they exist.
     """
     for i, flight in enumerate(flights, 1):
         output_file = os.path.join(output_folder, f"{base_output_name} {i}.mp4")
+        output_srt_file = os.path.join(output_folder, f"{base_output_name} {i}.srt")
         command = [MP4_MERGE_PATH] + flight + ["--out", output_file]
         subprocess.run(command, shell=True)
 
         if os.path.exists(output_file):
+            srt_success = merge_srt_files(flight, output_srt_file)  # Merge corresponding SRT files
             output_size = os.path.getsize(output_file)
             input_size = sum(os.path.getsize(f) for f in flight)
             size_difference = abs(input_size - output_size) / input_size
-            if size_difference <= 0.001:
+            
+            if size_difference <= 0.001 and srt_success:
                 for f in flight:
                     os.remove(f)
                     print("Deleted:", f)
+                    # Delete corresponding SRT file if it exists
+                    srt_filename = f.replace('.MP4', '.SRT')
+                    if os.path.exists(srt_filename):
+                        os.remove(srt_filename)
+                        print("Deleted SRT:", srt_filename)
+                print(f"Merged SRT file created: {output_srt_file}")
             else:
-                print(f"Files not deleted. Size mismatch: {size_difference:.2%} (threshold: 0.1%)")
+                if not srt_success:
+                    print(f"Files not deleted due to SRT processing errors for Flight {i}")
+                else:
+                    print(f"Files not deleted. Size mismatch: {size_difference:.2%} (threshold: 0.1%)")
         else:
             print("Error: Output file not found:", output_file)
-
 
 def main(files):
     """
