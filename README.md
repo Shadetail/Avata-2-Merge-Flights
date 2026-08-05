@@ -1,16 +1,17 @@
  ! - Please don't use this script before reading the last "warning" paragraph, or you risk a small chance of having your video messed up. - !
 
 # Avata 2 Merge Flights
-Python script that processes segmented DJI Avata 2 drone videos to determine which files belong to the same flight, merges them, and manages file organization based on user-defined parameters.
+Python script that processes segmented DJI Avata 2 drone videos to determine which files belong to the same flight, merges them, verifies the results, and deletes the source files only after showing you the evidence and asking for confirmation.
 
 ## Features
 
 - **Automatic Flight Detection**: Groups video files into flights based on timestamps within filenames and the video duration.
-- **Video Merging**: Uses an external tool to merge videos that are detected as part of the same flight.
-- **Customizable Output**: Prompts the user for an output directory name and constructs directories based on the earliest date found in file names.
-- **Size Validation and Cleanup**: Checks merged file sizes against the sum of the input files. Deletes source files if the size difference is within a 0.1% threshold. This is to avoid deleting input files if due to full hard disc mp4-merge silently fails and outputs a half finished output video.
-- **Error Handling**: Provides detailed error messages and skips deletion if file sizes do not match closely enough.
-- **SRT Merging**: If .SRT files are detected next to videos, they will be merged and copied over as well (timestamps and frame counts within will be adjusted appropritely).
+- **Video Merging**: Uses an external tool (mp4_merge) to merge videos that are detected as part of the same flight.
+- **SRT Merging**: If .SRT files are detected next to videos, they will be merged and copied over as well (timestamps and frame counts within will be adjusted appropriately). If a clip is missing its SRT, the merged SRT compensates the timestamps of later clips so telemetry stays in sync with the video.
+- **Verification Before Deletion**: Each merge is verified on three fronts: mp4_merge must exit cleanly, the merged file size must match the sum of the input files within 0.1% (this catches e.g. mp4_merge silently failing on a full disk and writing a half-finished video), and the merged video duration must match the sum of the clip durations within 2 seconds.
+- **Confirmation Dialog**: Nothing is deleted automatically anymore. After all flights are merged, a dialog lists every flight with the exact evidence for why deleting its source files is considered safe (or why they will be kept). You can watch the merged videos first — sources are only deleted after you explicitly confirm. Closing the dialog keeps everything.
+- **Logging**: Every run writes a full log to `OUTPUT_BASE_PATH/logs/` — the exact files received, flight grouping decisions with time gaps, mp4_merge output, all verification math, and every deletion. If anything ever looks off, the log shows exactly what happened.
+- **Extra Safety Guards**: Files are re-checked immediately before deletion (anything that changed or disappeared while you were reviewing is kept), existing output files are never overwritten, and duplicate input files are detected and ignored.
 
 ## Set Up
 
@@ -24,6 +25,8 @@ Python script that processes segmented DJI Avata 2 drone videos to determine whi
 Select all your video files straight from the SD card and drag and drop them onto the script.
 
 ![Example output.](https://i.imgur.com/8COUGs3.png "example output of Avata 2 Merge Flights script")
+
+After merging, review the merged videos, then confirm (or decline) the deletion of the source files in the dialog that pops up.
 
 ## Warning!
 
