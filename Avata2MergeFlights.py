@@ -246,6 +246,37 @@ def merge_srt_files(flight, durations, output_srt_file):
 
     return srt_map, missing, bad
 
+def run_mp4_merge(command):
+    """
+    Run mp4_merge, streaming its output to the console as it arrives so the
+    \r-repainted progress percentage stays visible in real time (capturing
+    it wholesale would hide it until the process exits). Returns
+    (returncode, output) with consecutive progress ticks collapsed to the
+    last one so the log stays readable.
+    """
+    proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    raw = bytearray()
+    while True:
+        b = proc.stdout.read(1)
+        if not b:
+            break
+        sys.stdout.buffer.write(b)
+        if b in b'\r\n':
+            sys.stdout.buffer.flush()
+        raw.extend(b)
+    returncode = proc.wait()
+    if raw and not raw.endswith(b'\n'):
+        sys.stdout.buffer.write(b'\n')
+    sys.stdout.buffer.flush()
+
+    lines = [l for l in re.split(r'[\r\n]+', raw.decode('utf-8', errors='replace')) if l.strip()]
+    trimmed = []
+    for idx, line in enumerate(lines):
+        if 'Merging...' in line and idx + 1 < len(lines) and 'Merging...' in lines[idx + 1]:
+            continue
+        trimmed.append(line)
+    return returncode, '\n'.join(trimmed)
+
 def merge_flights(flights, durations, output_folder, base_output_name):
     """
     Merge each flight's videos and SRTs, verify the results, and return a
@@ -270,15 +301,13 @@ def merge_flights(flights, durations, output_folder, base_output_name):
         try:
             command = [MP4_MERGE_PATH] + flight + ["--out", output_file]
             log.info(f"Running: {subprocess.list2cmdline(command)}")
-            proc = subprocess.run(command, capture_output=True, text=True)
-            if proc.stdout and proc.stdout.strip():
-                log.info(f"mp4_merge output:\n{proc.stdout.strip()}")
-            if proc.stderr and proc.stderr.strip():
-                log.warning(f"mp4_merge stderr:\n{proc.stderr.strip()}")
-            if proc.returncode == 0:
+            returncode, merge_output = run_mp4_merge(command)
+            if merge_output:
+                log.info(f"mp4_merge output:\n{merge_output}")
+            if returncode == 0:
                 result['reasons'].append("mp4_merge exited with code 0")
             else:
-                result['problems'].append(f"mp4_merge exited with code {proc.returncode}")
+                result['problems'].append(f"mp4_merge exited with code {returncode}")
 
             if not os.path.exists(output_file):
                 result['problems'].append("output file was not created")
